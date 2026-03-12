@@ -54,7 +54,9 @@ def process_breed_folder(breed):
             img = img.resize((WIDTH, HEIGHT), Image.LANCZOS)
 
             output_name = f"{breed}-{i:02d}.webp"
-            output_path = os.path.join(READY_DIR, output_name)
+            breed_ready_dir = os.path.join(READY_DIR, breed)
+            os.makedirs(breed_ready_dir, exist_ok=True)
+            output_path = os.path.join(breed_ready_dir, output_name)
 
             img.save(output_path, "WEBP", quality=82, method=6)
 

@@ -55,7 +55,7 @@ def upload_breed_images(breed: dict, processed_images: list[bytes]) -> list[str]
 
     urls = []
     for i, img_bytes in enumerate(processed_images, start=1):
-        path = f"{slug}-{i:02d}.webp"
+        path = f"{slug}/{slug}-{i:02d}.webp"
 
         # Upload to storage (upsert overwrites existing file)
         sb.storage.from_(SUPABASE_BUCKET).upload(
