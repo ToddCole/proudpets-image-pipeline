@@ -1,119 +1,88 @@
-from PIL import Image, ImageOps
-from pathlib import Path
-import argparse
-import re
+import os
 import shutil
+from PIL import Image
 
-RAW = Path("/Users/toddcole/Image_Shrinker/raw")
-OUT = Path("/Users/toddcole/Image_Shrinker/ready")
-ARCH = Path("/Users/toddcole/Image_Shrinker/processed_raw")
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-EXTS = {".jpg", ".jpeg", ".png", ".webp", ".tif", ".tiff"}
+RAW_DIR = os.path.join(BASE_DIR, "raw")
+READY_DIR = os.path.join(BASE_DIR, "ready")
+PROCESSED_RAW_DIR = os.path.join(BASE_DIR, "processed_raw")
 
+WIDTH = 1200
+HEIGHT = 900
 
-def slugify(s: str) -> str:
-    s = s.lower().strip()
-    s = re.sub(r"\.[a-z0-9]+$", "", s)
-    s = re.sub(r"[^a-z0-9]+", "-", s)
-    s = re.sub(r"-{2,}", "-", s).strip("-")
-    return s or "image"
+os.makedirs(READY_DIR, exist_ok=True)
+os.makedirs(PROCESSED_RAW_DIR, exist_ok=True)
 
-
-def crop_to_4x3(img: Image.Image) -> Image.Image:
+def crop_to_4x3(img):
     w, h = img.size
-    target = 4 / 3
-    ratio = w / h
+    target_ratio = 4 / 3
+    current_ratio = w / h
 
-    if ratio > target:
-        new_w = int(h * target)
+    if current_ratio > target_ratio:
+        new_w = int(h * target_ratio)
         left = (w - new_w) // 2
-        return img.crop((left, 0, left + new_w, h))
+        img = img.crop((left, 0, left + new_w, h))
     else:
-        new_h = int(w / target)
+        new_h = int(w / target_ratio)
         top = (h - new_h) // 2
-        return img.crop((0, top, w, top + new_h))
+        img = img.crop((0, top, w, top + new_h))
+
+    return img
 
 
-def next_index(out_dir: Path, slug: str) -> int:
-    existing = list(out_dir.glob(f"{slug}-*.webp"))
-    if not existing:
-        return 1
+def process_breed_folder(breed):
 
-    nums = []
-    for p in existing:
-        m = re.search(r"-(\d+)\.webp$", p.name)
-        if m:
-            nums.append(int(m.group(1)))
+    breed_path = os.path.join(RAW_DIR, breed)
+    images = [f for f in os.listdir(breed_path)
+              if f.lower().endswith((".jpg", ".jpeg", ".png", ".webp"))]
 
-    return max(nums) + 1 if nums else 1
+    if not images:
+        return
 
+    images.sort()
 
-def process_one(src: Path, width: int, quality: int) -> Path:
-    if src.parent != RAW:
-        slug = src.parent.name.lower()
-    else:
-        slug = slugify(src.stem)
+    for i, filename in enumerate(images, start=1):
 
-    OUT.mkdir(parents=True, exist_ok=True)
+        input_path = os.path.join(breed_path, filename)
 
-    idx = next_index(OUT, slug)
-    dst = OUT / f"{slug}-{idx:02d}.webp"
+        with Image.open(input_path) as img:
 
-    img = Image.open(src)
-    img = ImageOps.exif_transpose(img)
-    img = img.convert("RGB")
-    img = crop_to_4x3(img)
+            img = img.convert("RGB")
+            img = crop_to_4x3(img)
 
-    new_h = int(width * 3 / 4)
-    img = img.resize((width, new_h), Image.Resampling.LANCZOS)
-    img.save(dst, "WEBP", quality=quality, method=6)
+            img = img.resize((WIDTH, HEIGHT), Image.LANCZOS)
 
-    return dst
+            output_name = f"{breed}-{i:02d}.webp"
+            output_path = os.path.join(READY_DIR, output_name)
+
+            img.save(output_path, "WEBP", quality=82, method=6)
+
+        archive_dir = os.path.join(PROCESSED_RAW_DIR, breed)
+        os.makedirs(archive_dir, exist_ok=True)
+
+        shutil.move(input_path, os.path.join(archive_dir, filename))
+
+        print(f"Processed: {output_name}")
 
 
 def main():
-    ap = argparse.ArgumentParser(description="ProudPets processor")
-    ap.add_argument("--keep-raw", action="store_true")
-    ap.add_argument("--width", type=int, default=1200)
-    ap.add_argument("--quality", type=int, default=85)
-    args = ap.parse_args()
 
-    files = [
-        p for p in RAW.rglob("*")
-        if p.is_file() and p.suffix.lower() in EXTS
-    ]
-
-    if not files:
-        print(f"No images in {RAW}")
+    if not os.path.exists(RAW_DIR):
+        print("Raw folder not found")
         return
 
-    ok = 0
+    breeds = [d for d in os.listdir(RAW_DIR)
+              if os.path.isdir(os.path.join(RAW_DIR, d))]
 
-    for src in files:
-        try:
-            out = process_one(src, args.width, args.quality)
-            ok += 1
-            print(f"OK: {src.name} -> {out.name}")
+    if not breeds:
+        print("No breed folders in raw/")
+        return
 
-            if not args.keep_raw:
-                if src.parent != RAW:
-                    dest = ARCH / src.parent.name
-                else:
-                    dest = ARCH / "unsorted"
+    for breed in breeds:
+        process_breed_folder(breed)
 
-                dest.mkdir(parents=True, exist_ok=True)
-                shutil.move(str(src), str(dest / src.name))
-
-        except Exception as e:
-            print(f"FAIL: {src}: {e}")
-
-    print(f"Done. Processed {ok} image(s).")
-    print(f"Output: {OUT}")
-
-    if args.keep_raw:
-        print("Raw files kept.")
-    else:
-        print(f"Raw files moved to: {ARCH}")
+    print("\nAll done.")
 
 
 if __name__ == "__main__":
