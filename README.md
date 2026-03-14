@@ -1,4 +1,4 @@
-# Proud Pets Image Pipeline
+Image Pipeline
 
 Automated image processing pipeline for Proud Pets: crop to 4:3, resize, convert to WebP, and archive originals.
 
